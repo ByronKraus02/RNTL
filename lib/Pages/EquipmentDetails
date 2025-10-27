@@ -1,0 +1,321 @@
+import { useState, useEffect } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Calendar } from "@/components/ui/calendar";
+import { Label } from "@/components/ui/label";
+import { ArrowLeft, MapPin, User, Phone, Calendar as CalendarIcon, CreditCard } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { format, differenceInDays } from "date-fns";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+
+export default function EquipmentDetails() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const urlParams = new URLSearchParams(window.location.search);
+  const equipmentId = urlParams.get('id');
+
+  const [startDate, setStartDate] = useState(null);
+  const [endDate, setEndDate] = useState(null);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(false);
+
+  const { data: equipment, isLoading } = useQuery({
+    queryKey: ['equipment', equipmentId],
+    queryFn: async () => {
+      const items = await base44.entities.Equipment.filter({ id: equipmentId });
+      return items[0];
+    },
+    enabled: !!equipmentId,
+  });
+
+  const { data: user } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+    retry: false,
+  });
+
+  const createBookingMutation = useMutation({
+    mutationFn: async (bookingData) => {
+      return await base44.entities.Booking.create(bookingData);
+    },
+    onSuccess: () => {
+      setSuccess(true);
+      queryClient.invalidateQueries({ queryKey: ['equipment', equipmentId] });
+      setTimeout(() => {
+        navigate(createPageUrl("MyBookings"));
+      }, 2000);
+    },
+    onError: (error) => {
+      setError("Failed to create booking. Please try again.");
+    },
+  });
+
+  const handleBooking = async () => {
+    if (!user) {
+      base44.auth.redirectToLogin(window.location.pathname + window.location.search);
+      return;
+    }
+
+    if (!startDate || !endDate) {
+      setError("Please select both start and end dates");
+      return;
+    }
+
+    if (startDate >= endDate) {
+      setError("End date must be after start date");
+      return;
+    }
+
+    const totalDays = differenceInDays(endDate, startDate) + 1;
+    const totalAmount = totalDays * equipment.price_per_day;
+
+    const bookingData = {
+      equipment_id: equipment.id,
+      equipment_name: equipment.name,
+      renter_email: user.email,
+      renter_name: user.full_name,
+      owner_email: equipment.created_by,
+      start_date: format(startDate, "yyyy-MM-dd"),
+      end_date: format(endDate, "yyyy-MM-dd"),
+      total_days: totalDays,
+      total_amount: totalAmount,
+      status: "confirmed",
+      payment_status: "held_in_escrow",
+      pickup_location: equipment.location,
+      pickup_address: equipment.address,
+      contact_number: equipment.contact_number,
+    };
+
+    createBookingMutation.mutate(bookingData);
+  };
+
+  const calculateTotal = () => {
+    if (!startDate || !endDate || !equipment) return 0;
+    const days = differenceInDays(endDate, startDate) + 1;
+    return days * equipment.price_per_day;
+  };
+
+  const categoryColors = {
+    speakers: "bg-blue-500 text-white",
+    dj_equipment: "bg-red-500 text-white",
+    microphones: "bg-pink-500 text-white",
+    lighting: "bg-yellow-500 text-white",
+    instruments: "bg-green-500 text-white",
+    amplifiers: "bg-orange-500 text-white",
+    mixers: "bg-indigo-500 text-white",
+    other: "bg-gray-500 text-white",
+  };
+
+  if (isLoading) {
+    return (
+      <div className="max-w-6xl mx-auto px-6 py-8 bg-black min-h-screen">
+        <Skeleton className="h-8 w-32 mb-6 bg-gray-800" />
+        <div className="grid lg:grid-cols-2 gap-8">
+          <Skeleton className="h-96 rounded-xl bg-gray-800" />
+          <div className="space-y-4">
+            <Skeleton className="h-12 w-3/4 bg-gray-800" />
+            <Skeleton className="h-24 w-full bg-gray-800" />
+            <Skeleton className="h-64 w-full bg-gray-800" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!equipment) {
+    return (
+      <div className="max-w-6xl mx-auto px-6 py-8 text-center bg-black min-h-screen">
+        <h2 className="text-2xl font-bold mb-4 text-white">Equipment not found</h2>
+        <Button onClick={() => navigate(createPageUrl("Home"))} className="bg-cyan-400 text-black hover:bg-cyan-300">
+          Back to Browse
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto px-6 py-8 bg-black min-h-screen">
+      <Button
+        variant="ghost"
+        onClick={() => navigate(createPageUrl("Home"))}
+        className="mb-6 hover:bg-gray-900 text-gray-300"
+      >
+        <ArrowLeft className="w-4 h-4 mr-2" />
+        Back to Browse
+      </Button>
+
+      {success && (
+        <Alert className="mb-6 bg-green-900/50 border-green-600">
+          <AlertDescription className="text-green-300">
+            ✅ Booking confirmed! Payment held in escrow. Redirecting to your bookings...
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div className="grid lg:grid-cols-2 gap-8">
+        {/* Equipment Image and Details */}
+        <div className="space-y-6">
+          <div className="relative h-96 bg-gray-200 rounded-3xl overflow-hidden shadow-lg">
+            {equipment.image_url ? (
+              <img
+                src={equipment.image_url}
+                alt={equipment.name}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-gray-300">
+                <span className="text-9xl opacity-30">🎵</span>
+              </div>
+            )}
+            <div className="absolute top-4 right-4">
+              <Badge className={`${categoryColors[equipment.category]} border-0 shadow-lg text-sm`}>
+                {equipment.category?.replace(/_/g, ' ')}
+              </Badge>
+            </div>
+          </div>
+
+          <Card className="bg-gray-200 shadow-lg border-0 rounded-3xl">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-gray-900">
+                <MapPin className="w-5 h-5 text-red-600" />
+                Pickup Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <p className="text-sm text-gray-600">Location</p>
+                <p className="font-semibold text-gray-900">{equipment.location}</p>
+              </div>
+              {equipment.address && (
+                <div>
+                  <p className="text-sm text-gray-600">Full Address</p>
+                  <p className="font-semibold text-gray-900">{equipment.address}</p>
+                </div>
+              )}
+              {equipment.contact_number && (
+                <div className="flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-gray-600" />
+                  <span className="font-semibold text-gray-900">{equipment.contact_number}</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Booking Section */}
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold text-white mb-3">
+              {equipment.name}
+            </h1>
+            <div className="flex items-center gap-4 mb-4">
+              <div className="text-3xl font-bold text-cyan-400">
+                R{equipment.price_per_day}
+              </div>
+              <span className="text-gray-400">per day</span>
+            </div>
+            <p className="text-gray-300 leading-relaxed mb-4">
+              {equipment.description || "No description available"}
+            </p>
+            <div className="flex items-center gap-2 text-sm">
+              <Badge variant="outline" className="border-gray-600 text-gray-300">
+                Condition: {equipment.condition}
+              </Badge>
+              <Badge className="bg-green-600 text-white border-0">
+                {equipment.status === 'available' ? '✓ Available' : 'Unavailable'}
+              </Badge>
+            </div>
+          </div>
+
+          <Card className="bg-gray-200 shadow-lg border-0 rounded-3xl">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-gray-900">
+                <CalendarIcon className="w-5 h-5 text-red-600" />
+                Select Rental Dates
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-sm font-medium mb-2 block text-gray-900">Start Date</Label>
+                  <Calendar
+                    mode="single"
+                    selected={startDate}
+                    onSelect={setStartDate}
+                    disabled={(date) => date < new Date()}
+                    className="rounded-md border border-gray-300 p-3 bg-white"
+                  />
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium mb-2 block text-gray-900">End Date</Label>
+                  <Calendar
+                    mode="single"
+                    selected={endDate}
+                    onSelect={setEndDate}
+                    disabled={(date) => date < new Date() || (startDate && date <= startDate)}
+                    className="rounded-md border border-gray-300 p-3 bg-white"
+                  />
+                </div>
+              </div>
+
+              {startDate && endDate && (
+                <div className="bg-gray-800 p-4 rounded-2xl border border-gray-700">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-gray-300">Rental Period:</span>
+                    <span className="font-semibold text-white">
+                      {differenceInDays(endDate, startDate) + 1} days
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-gray-300">Daily Rate:</span>
+                    <span className="font-semibold text-white">R{equipment.price_per_day}</span>
+                  </div>
+                  <div className="border-t border-gray-700 pt-2 mt-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-lg font-bold text-white">Total Amount:</span>
+                      <span className="text-2xl font-bold text-cyan-400">
+                        R{calculateTotal()}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">
+                      💰 Payment will be held in escrow until equipment is delivered
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <Button
+                onClick={handleBooking}
+                disabled={!startDate || !endDate || createBookingMutation.isPending || equipment.status !== 'available'}
+                className="w-full bg-cyan-400 text-black hover:bg-cyan-300 font-bold py-6 text-lg rounded-full"
+              >
+                {createBookingMutation.isPending ? (
+                  "Processing..."
+                ) : !user ? (
+                  "Login to Book"
+                ) : (
+                  <>
+                    <CreditCard className="w-5 h-5 mr-2" />
+                    Confirm Booking
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}

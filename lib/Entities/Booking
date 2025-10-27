@@ -1,0 +1,85 @@
+{
+  "name": "Booking",
+  "type": "object",
+  "properties": {
+    "equipment_id": {
+      "type": "string",
+      "description": "ID of the rented equipment"
+    },
+    "equipment_name": {
+      "type": "string",
+      "description": "Name of the equipment"
+    },
+    "renter_email": {
+      "type": "string",
+      "description": "Email of the person renting"
+    },
+    "renter_name": {
+      "type": "string",
+      "description": "Name of the renter"
+    },
+    "owner_email": {
+      "type": "string",
+      "description": "Email of the equipment owner"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Rental start date"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Rental end date"
+    },
+    "total_days": {
+      "type": "number",
+      "description": "Number of rental days"
+    },
+    "total_amount": {
+      "type": "number",
+      "description": "Total rental amount in ZAR"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "confirmed",
+        "picked_up",
+        "returned",
+        "cancelled"
+      ],
+      "default": "pending",
+      "description": "Booking status"
+    },
+    "payment_status": {
+      "type": "string",
+      "enum": [
+        "held_in_escrow",
+        "released_to_owner",
+        "refunded"
+      ],
+      "default": "held_in_escrow",
+      "description": "Payment escrow status"
+    },
+    "pickup_location": {
+      "type": "string",
+      "description": "Where to pick up the equipment"
+    },
+    "pickup_address": {
+      "type": "string",
+      "description": "Full pickup address"
+    },
+    "contact_number": {
+      "type": "string",
+      "description": "Owner's contact number"
+    }
+  },
+  "required": [
+    "equipment_id",
+    "equipment_name",
+    "start_date",
+    "end_date",
+    "total_amount"
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "name": "Equipment",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Name of the equipment"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the equipment"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "speakers",
+        "dj_equipment",
+        "microphones",
+        "lighting",
+        "instruments",
+        "amplifiers",
+        "mixers",
+        "other"
+      ],
+      "description": "Category of equipment"
+    },
+    "price_per_day": {
+      "type": "number",
+      "description": "Rental price per day in ZAR"
+    },
+    "image_url": {
+      "type": "string",
+      "description": "Image URL of the equipment"
+    },
+    "location": {
+      "type": "string",
+      "description": "Pickup location in Stellenbosch"
+    },
+    "address": {
+      "type": "string",
+      "description": "Full address for pickup"
+    },
+    "contact_number": {
+      "type": "string",
+      "description": "Owner's contact number"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "available",
+        "rented",
+        "unavailable"
+      ],
+      "default": "available",
+      "description": "Availability status"
+    },
+    "condition": {
+      "type": "string",
+      "enum": [
+        "excellent",
+        "good",
+        "fair"
+      ],
+      "default": "good",
+      "description": "Equipment condition"
+    }
+  },
+  "required": [
+    "name",
+    "category",
+    "price_per_day",
+    "location"
+  ]
+}
