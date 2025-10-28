@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,37 +9,78 @@ import { Loader2, User, CreditCard } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+// ----------- API HELPERS ------------
+const api = {
+  getCurrentUser: async () => {
+    const res = await fetch("/api/me", { credentials: "include" });
+    if (!res.ok) throw new Error("Failed to fetch user");
+    return res.json();
+  },
+  updateUser: async (data) => {
+    const res = await fetch("/api/update-profile", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error("Failed to update profile");
+    return res.json();
+  },
+  redirectToLogin: () => {
+    window.location.href = "/login"; // Customize this route
+  },
+};
+// ------------------------------------
+
 export default function Settings() {
   const queryClient = useQueryClient();
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
 
-  const { data: user, isLoading } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
+  // Fetch user
+  const { data: user, isLoading, error: userError } = useQuery({
+    queryKey: ["currentUser"],
+    queryFn: api.getCurrentUser,
   });
 
   const [profileData, setProfileData] = useState({
-    full_name: user?.full_name || "",
-    phone_number: user?.phone_number || "",
+    full_name: "",
+    phone_number: "",
   });
 
   const [bankingData, setBankingData] = useState({
-    bank_name: user?.bank_name || "",
-    account_holder_name: user?.account_holder_name || "",
-    account_number: user?.account_number || "",
-    branch_code: user?.branch_code || "",
-    account_type: user?.account_type || "cheque",
+    bank_name: "",
+    account_holder_name: "",
+    account_number: "",
+    branch_code: "",
+    account_type: "cheque",
   });
 
+  // Populate form when user data loads
+  useEffect(() => {
+    if (user) {
+      setProfileData({
+        full_name: user.full_name || "",
+        phone_number: user.phone_number || "",
+      });
+      setBankingData({
+        bank_name: user.bank_name || "",
+        account_holder_name: user.account_holder_name || "",
+        account_number: user.account_number || "",
+        branch_code: user.branch_code || "",
+        account_type: user.account_type || "cheque",
+      });
+    }
+  }, [user]);
+
   const updateProfileMutation = useMutation({
-    mutationFn: (data) => base44.auth.updateMe(data),
+    mutationFn: api.updateUser,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+      queryClient.invalidateQueries({ queryKey: ["currentUser"] });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     },
-    onError: (error) => {
+    onError: () => {
       setError("Failed to update profile. Please try again.");
       setTimeout(() => setError(null), 3000);
     },
@@ -56,12 +96,24 @@ export default function Settings() {
     updateProfileMutation.mutate(bankingData);
   };
 
-  if (!user) {
+  // Loading or unauthenticated
+  if (isLoading) {
     return (
       <div className="max-w-4xl mx-auto px-6 py-16 text-center bg-black min-h-screen">
-        <h2 className="text-2xl font-bold mb-4 text-white">Please login to access settings</h2>
+        <Loader2 className="w-6 h-6 text-white animate-spin mx-auto mb-4" />
+        <p className="text-gray-300">Loading your settings...</p>
+      </div>
+    );
+  }
+
+  if (!user || userError) {
+    return (
+      <div className="max-w-4xl mx-auto px-6 py-16 text-center bg-black min-h-screen">
+        <h2 className="text-2xl font-bold mb-4 text-white">
+          Please login to access settings
+        </h2>
         <Button
-          onClick={() => base44.auth.redirectToLogin()}
+          onClick={() => api.redirectToLogin()}
           className="bg-cyan-400 text-black hover:bg-cyan-300"
         >
           Login
@@ -76,9 +128,7 @@ export default function Settings() {
         <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
           Settings
         </h1>
-        <p className="text-gray-400">
-          Manage your profile and banking information
-        </p>
+        <p className="text-gray-400">Manage your profile and banking information</p>
       </div>
 
       {success && (
@@ -113,6 +163,7 @@ export default function Settings() {
           </TabsTrigger>
         </TabsList>
 
+        {/* PROFILE TAB */}
         <TabsContent value="profile">
           <Card className="shadow-lg border-0 bg-gray-900 rounded-3xl">
             <CardHeader>
@@ -167,7 +218,7 @@ export default function Settings() {
                       Updating...
                     </>
                   ) : (
-                    'Save Profile'
+                    "Save Profile"
                   )}
                 </Button>
               </form>
@@ -175,6 +226,7 @@ export default function Settings() {
           </Card>
         </TabsContent>
 
+        {/* BANKING TAB */}
         <TabsContent value="banking">
           <Card className="shadow-lg border-0 bg-gray-900 rounded-3xl">
             <CardHeader>
@@ -198,15 +250,9 @@ export default function Settings() {
                       <SelectValue placeholder="Select your bank" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ABSA">ABSA</SelectItem>
-                      <SelectItem value="Standard Bank">Standard Bank</SelectItem>
-                      <SelectItem value="FNB">FNB</SelectItem>
-                      <SelectItem value="Nedbank">Nedbank</SelectItem>
-                      <SelectItem value="Capitec">Capitec</SelectItem>
-                      <SelectItem value="Investec">Investec</SelectItem>
-                      <SelectItem value="Discovery Bank">Discovery Bank</SelectItem>
-                      <SelectItem value="TymeBank">TymeBank</SelectItem>
-                      <SelectItem value="African Bank">African Bank</SelectItem>
+                      {["ABSA", "Standard Bank", "FNB", "Nedbank", "Capitec", "Investec", "Discovery Bank", "TymeBank", "African Bank"].map(bank => (
+                        <SelectItem key={bank} value={bank}>{bank}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -273,7 +319,7 @@ export default function Settings() {
                       Updating...
                     </>
                   ) : (
-                    'Save Banking Details'
+                    "Save Banking Details"
                   )}
                 </Button>
               </form>

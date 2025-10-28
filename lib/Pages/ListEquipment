@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useState, useEffect } from "react";
+import axios from "axios";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,7 @@ const STELLENBOSCH_LOCATIONS = [
 export default function ListEquipment() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -47,13 +48,21 @@ export default function ListEquipment() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
 
+  // ✅ Get current user (replace with your own auth logic)
   const { data: user } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
+    queryKey: ["currentUser"],
+    queryFn: async () => {
+      const res = await axios.get("/api/auth/me"); // e.g., returns { id, name, email }
+      return res.data;
+    },
   });
 
+  // ✅ Create equipment mutation
   const createEquipmentMutation = useMutation({
-    mutationFn: (equipmentData) => base44.entities.Equipment.create(equipmentData),
+    mutationFn: async (equipmentData) => {
+      const res = await axios.post("/api/equipment", equipmentData);
+      return res.data;
+    },
     onSuccess: (data) => {
       setSuccess(true);
       setFormData({
@@ -68,33 +77,41 @@ export default function ListEquipment() {
         image_url: "",
         status: "available",
       });
-      queryClient.invalidateQueries({ queryKey: ['equipment'] });
+      queryClient.invalidateQueries({ queryKey: ["equipment"] });
       setTimeout(() => {
         navigate(createPageUrl("EquipmentDetails") + `?id=${data.id}`);
       }, 1000);
     },
-    onError: (error) => {
+    onError: () => {
       setError("Failed to list equipment. Please try again.");
     },
   });
 
+  // ✅ Handle file upload to your backend or a service like Cloudinary
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     setUploading(true);
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      setFormData(prev => ({ ...prev, image_url: file_url }));
-    } catch (error) {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await axios.post("/api/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      setFormData((prev) => ({ ...prev, image_url: res.data.file_url }));
+    } catch (err) {
       setError("Failed to upload image. Please try again.");
+    } finally {
+      setUploading(false);
     }
-    setUploading(false);
   };
 
   const handleAddressSelect = (address) => {
-    const location = address.split(',')[0];
-    setFormData(prev => ({ ...prev, address, location }));
+    const location = address.split(",")[0];
+    setFormData((prev) => ({ ...prev, address, location }));
   };
 
   const handleSubmit = (e) => {
@@ -114,7 +131,7 @@ export default function ListEquipment() {
       <div className="max-w-2xl mx-auto px-6 py-16 text-center bg-black min-h-screen">
         <h2 className="text-2xl font-bold mb-4 text-white">Please login to list equipment</h2>
         <Button
-          onClick={() => base44.auth.redirectToLogin()}
+          onClick={() => (window.location.href = "/login")}
           className="bg-cyan-400 text-black hover:bg-cyan-300"
         >
           Login
@@ -163,7 +180,7 @@ export default function ListEquipment() {
                 id="name"
                 placeholder="e.g., JBL EON615 Powered Speaker"
                 value={formData.name}
-                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                 required
                 className="bg-gray-800 border-gray-700 text-white"
               />
@@ -173,9 +190,9 @@ export default function ListEquipment() {
               <Label htmlFor="description" className="text-white">Description</Label>
               <Textarea
                 id="description"
-                placeholder="Describe your equipment, specifications, and what makes it great..."
+                placeholder="Describe your equipment..."
                 value={formData.description}
-                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
                 rows={4}
                 className="bg-gray-800 border-gray-700 text-white"
               />
@@ -186,7 +203,7 @@ export default function ListEquipment() {
                 <Label htmlFor="category" className="text-white">Category *</Label>
                 <Select
                   value={formData.category}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}
+                  onValueChange={(value) => setFormData((prev) => ({ ...prev, category: value }))}
                 >
                   <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
                     <SelectValue placeholder="Select category" />
@@ -208,7 +225,7 @@ export default function ListEquipment() {
                 <Label htmlFor="condition" className="text-white">Condition</Label>
                 <Select
                   value={formData.condition}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, condition: value }))}
+                  onValueChange={(value) => setFormData((prev) => ({ ...prev, condition: value }))}
                 >
                   <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
                     <SelectValue />
@@ -229,7 +246,7 @@ export default function ListEquipment() {
                 type="number"
                 placeholder="e.g., 250"
                 value={formData.price_per_day}
-                onChange={(e) => setFormData(prev => ({ ...prev, price_per_day: parseFloat(e.target.value) }))}
+                onChange={(e) => setFormData((prev) => ({ ...prev, price_per_day: e.target.value }))}
                 required
                 className="bg-gray-800 border-gray-700 text-white"
               />
@@ -258,7 +275,7 @@ export default function ListEquipment() {
                 id="contact"
                 placeholder="e.g., 082 123 4567"
                 value={formData.contact_number}
-                onChange={(e) => setFormData(prev => ({ ...prev, contact_number: e.target.value }))}
+                onChange={(e) => setFormData((prev) => ({ ...prev, contact_number: e.target.value }))}
                 className="bg-gray-800 border-gray-700 text-white"
               />
             </div>
@@ -269,7 +286,7 @@ export default function ListEquipment() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => document.getElementById('image-upload').click()}
+                  onClick={() => document.getElementById("image-upload").click()}
                   disabled={uploading}
                   className="border-2 border-cyan-400 hover:bg-cyan-400 text-white hover:text-black"
                 >
