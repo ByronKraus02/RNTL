@@ -1,9 +1,11 @@
+
 import { useState } from "react";
+import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Edit, Trash2, MapPin, Calendar } from "lucide-react";
+import { Plus, Edit, Trash2, MapPin, Calendar, ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,54 +14,43 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
 import { format, differenceInDays } from "date-fns";
-import axios from "axios";
 
 export default function MyEquipment() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [blockingEquipment, setBlockingEquipment] = useState(null);
-  const [startDate, setStartDate] = useState(null);
-  const [endDate, setEndDate] = useState(null);
+  const [dateRange, setDateRange] = useState(undefined);
 
-  // Get current user
   const { data: user } = useQuery({
-    queryKey: ["currentUser"],
-    queryFn: async () => {
-      const res = await axios.get("/api/me");
-      return res.data;
-    },
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
   });
 
-  // Fetch user's equipment
-  const { data: equipment = [], isLoading } = useQuery({
-    queryKey: ["myEquipment", user?.email],
+  const { data: equipment, isLoading } = useQuery({
+    queryKey: ['myEquipment', user?.email],
     queryFn: async () => {
-      const res = await axios.get(`/api/equipment?created_by=${user.email}`);
-      return res.data;
+      const items = await base44.entities.Equipment.filter({ created_by: user.email }, '-created_date');
+      return items;
     },
+    initialData: [],
     enabled: !!user,
   });
 
-  // Delete equipment
   const deleteEquipmentMutation = useMutation({
-    mutationFn: async (id) => {
-      await axios.delete(`/api/equipment/${id}`);
-    },
+    mutationFn: (id) => base44.entities.Equipment.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries(["myEquipment"]);
-      queryClient.invalidateQueries(["equipment"]);
+      queryClient.invalidateQueries({ queryKey: ['myEquipment'] });
+      queryClient.invalidateQueries({ queryKey: ['equipment'] });
     },
   });
 
-  // Block equipment dates
   const blockEquipmentMutation = useMutation({
     mutationFn: async ({ equipmentId, startDate, endDate }) => {
-      await axios.post("/api/bookings", {
+      return await base44.entities.Booking.create({
         equipment_id: equipmentId,
         equipment_name: blockingEquipment.name,
         renter_email: user.email,
@@ -77,20 +68,27 @@ export default function MyEquipment() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(["bookings"]);
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
       setBlockingEquipment(null);
-      setStartDate(null);
-      setEndDate(null);
+      setDateRange(undefined);
     },
   });
 
   const handleBlockDates = () => {
-    if (!startDate || !endDate) return;
+    if (!dateRange?.from) return;
+    
+    const endDate = dateRange.to || dateRange.from;
+    
     blockEquipmentMutation.mutate({
       equipmentId: blockingEquipment.id,
-      startDate,
-      endDate,
+      startDate: dateRange.from,
+      endDate: endDate,
     });
+  };
+
+  const handleCloseDialog = () => {
+    setBlockingEquipment(null);
+    setDateRange(undefined);
   };
 
   const categoryColors = {
@@ -107,11 +105,9 @@ export default function MyEquipment() {
   if (!user) {
     return (
       <div className="max-w-4xl mx-auto px-6 py-16 text-center bg-black min-h-screen">
-        <h2 className="text-2xl font-bold mb-4 text-white">
-          Please login to view your equipment
-        </h2>
+        <h2 className="text-2xl font-bold mb-4 text-white">Please login to view your equipment</h2>
         <Button
-          onClick={() => (window.location.href = "/login")}
+          onClick={() => base44.auth.redirectToLogin()}
           className="bg-cyan-400 text-black hover:bg-cyan-300"
         >
           Login
@@ -122,12 +118,14 @@ export default function MyEquipment() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 bg-black min-h-screen">
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
           <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
             My Equipment
           </h1>
-          <p className="text-gray-400">Manage your listed music equipment</p>
+          <p className="text-gray-400">
+            Manage your listed music equipment
+          </p>
         </div>
         <Button
           onClick={() => navigate(createPageUrl("ListEquipment"))}
@@ -140,23 +138,17 @@ export default function MyEquipment() {
 
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {Array(6)
-            .fill(0)
-            .map((_, i) => (
-              <Skeleton key={i} className="h-96 bg-gray-800" />
-            ))}
+          {Array(6).fill(0).map((_, i) => (
+            <Skeleton key={i} className="h-96 bg-gray-800" />
+          ))}
         </div>
       ) : equipment.length === 0 ? (
         <Card className="p-12 text-center border-0 bg-gray-900 rounded-3xl">
           <div className="w-24 h-24 mx-auto mb-6 bg-gray-800 rounded-full flex items-center justify-center">
             <Plus className="w-12 h-12 text-cyan-400" />
           </div>
-          <h3 className="text-2xl font-semibold mb-2 text-white">
-            No equipment listed yet
-          </h3>
-          <p className="text-gray-400 mb-6">
-            Start listing your music equipment to earn money
-          </p>
+          <h3 className="text-2xl font-semibold mb-2 text-white">No equipment listed yet</h3>
+          <p className="text-gray-400 mb-6">Start listing your music equipment to earn money</p>
           <Button
             onClick={() => navigate(createPageUrl("ListEquipment"))}
             className="bg-cyan-400 text-black hover:bg-cyan-300"
@@ -168,10 +160,7 @@ export default function MyEquipment() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {equipment.map((item) => (
-            <Card
-              key={item.id}
-              className="overflow-hidden hover:shadow-lg transition-shadow border-0 bg-gray-200 rounded-3xl"
-            >
+            <Card key={item.id} className="overflow-hidden hover:shadow-lg transition-shadow border-0 bg-gray-200 rounded-3xl">
               <div className="relative h-48 bg-gray-300 overflow-hidden">
                 {item.image_url ? (
                   <img
@@ -185,25 +174,17 @@ export default function MyEquipment() {
                   </div>
                 )}
                 <div className="absolute top-3 left-3">
-                  <Badge
-                    className={`${categoryColors[item.category]} border-0 shadow-lg`}
-                  >
-                    {item.category?.replace(/_/g, " ")}
+                  <Badge className={`${categoryColors[item.category]} border-0 shadow-lg`}>
+                    {item.category?.replace(/_/g, ' ')}
                   </Badge>
                 </div>
                 <div className="absolute top-3 right-3">
-                  <Badge
-                    className={
-                      item.status === "available"
-                        ? "bg-green-600 text-white"
-                        : "bg-red-600 text-white"
-                    }
-                  >
+                  <Badge className={item.status === 'available' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}>
                     {item.status}
                   </Badge>
                 </div>
               </div>
-
+              
               <CardContent className="p-4">
                 <h3 className="font-bold text-lg text-gray-900 mb-2 line-clamp-1">
                   {item.name}
@@ -211,7 +192,7 @@ export default function MyEquipment() {
                 <p className="text-sm text-gray-600 mb-3 line-clamp-2">
                   {item.description || "No description"}
                 </p>
-
+                
                 <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
                   <MapPin className="w-4 h-4" />
                   <span className="line-clamp-1">{item.location}</span>
@@ -228,9 +209,7 @@ export default function MyEquipment() {
                   variant="outline"
                   size="sm"
                   className="flex-1 border-2 border-gray-400 hover:bg-gray-300"
-                  onClick={() =>
-                    navigate(createPageUrl("EquipmentDetails") + `?id=${item.id}`)
-                  }
+                  onClick={() => navigate(createPageUrl("EquipmentDetails") + `?id=${item.id}`)}
                 >
                   <Edit className="w-4 h-4 mr-2" />
                   View
@@ -248,7 +227,7 @@ export default function MyEquipment() {
                   variant="destructive"
                   size="sm"
                   onClick={() => {
-                    if (confirm("Are you sure you want to delete this equipment?")) {
+                    if (confirm('Are you sure you want to delete this equipment?')) {
                       deleteEquipmentMutation.mutate(item.id);
                     }
                   }}
@@ -262,68 +241,61 @@ export default function MyEquipment() {
         </div>
       )}
 
-      {/* Block dates dialog */}
-      <Dialog
-        open={!!blockingEquipment}
-        onOpenChange={() => {
-          setBlockingEquipment(null);
-          setStartDate(null);
-          setEndDate(null);
-        }}
-      >
-        <DialogContent className="bg-gray-900 border-gray-700 text-white">
+      <Dialog open={!!blockingEquipment} onOpenChange={handleCloseDialog}>
+        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
           <DialogHeader>
-            <DialogTitle>Block Equipment Dates</DialogTitle>
+            <div className="flex items-center gap-3 mb-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleCloseDialog}
+                className="hover:bg-gray-800 text-gray-300"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
+              <DialogTitle>Block Equipment Dates</DialogTitle>
+            </div>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-gray-400">
-              Select dates when your equipment won't be available for rental
+              Select a date or date range when your equipment won't be available for rental
             </p>
             <div>
-              <Label className="text-white mb-2 block">Start Date</Label>
+              <Label className="text-white mb-2 block">Select Dates</Label>
               <CalendarComponent
-                mode="single"
-                selected={startDate}
-                onSelect={setStartDate}
+                mode="range"
+                selected={dateRange}
+                onSelect={setDateRange}
                 disabled={(date) => date < new Date()}
                 className="rounded-md border border-gray-700 bg-gray-800 text-white"
               />
             </div>
-            <div>
-              <Label className="text-white mb-2 block">End Date</Label>
-              <CalendarComponent
-                mode="single"
-                selected={endDate}
-                onSelect={setEndDate}
-                disabled={(date) =>
-                  date < new Date() || (startDate && date <= startDate)
-                }
-                className="rounded-md border border-gray-700 bg-gray-800 text-white"
-              />
-            </div>
+            {dateRange?.from && (
+              <div className="bg-gray-800 p-3 rounded-lg border border-gray-700">
+                <p className="text-sm text-gray-300">
+                  {dateRange.to ? (
+                    <>
+                      Blocking from {format(dateRange.from, "MMM d, yyyy")} to {format(dateRange.to, "MMM d, yyyy")}
+                      <span className="block text-cyan-400 mt-1">
+                        ({differenceInDays(dateRange.to, dateRange.from) + 1} days)
+                      </span>
+                    </>
+                  ) : (
+                    <>Blocking {format(dateRange.from, "MMM d, yyyy")}</>
+                  )}
+                </p>
+              </div>
+            )}
           </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setBlockingEquipment(null);
-                setStartDate(null);
-                setEndDate(null);
-              }}
-              className="border-gray-700 text-white hover:bg-gray-800"
-            >
-              Cancel
-            </Button>
+          <div className="flex gap-3 pt-4">
             <Button
               onClick={handleBlockDates}
-              disabled={
-                !startDate || !endDate || blockEquipmentMutation.isPending
-              }
-              className="bg-cyan-400 text-black hover:bg-cyan-300"
+              disabled={!dateRange?.from || blockEquipmentMutation.isPending}
+              className="flex-1 bg-cyan-400 text-black hover:bg-cyan-300 font-bold"
             >
-              Block Dates
+              {blockEquipmentMutation.isPending ? "Blocking..." : "Confirm Block"}
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

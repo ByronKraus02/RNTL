@@ -1,0 +1,45 @@
+{
+  "name": "Message",
+  "type": "object",
+  "properties": {
+    "equipment_id": {
+      "type": "string",
+      "description": "ID of the equipment being discussed"
+    },
+    "equipment_name": {
+      "type": "string",
+      "description": "Name of the equipment"
+    },
+    "sender_email": {
+      "type": "string",
+      "description": "Email of the message sender"
+    },
+    "sender_name": {
+      "type": "string",
+      "description": "Name of the sender"
+    },
+    "receiver_email": {
+      "type": "string",
+      "description": "Email of the message receiver"
+    },
+    "receiver_name": {
+      "type": "string",
+      "description": "Name of the receiver"
+    },
+    "content": {
+      "type": "string",
+      "description": "Message content"
+    },
+    "conversation_id": {
+      "type": "string",
+      "description": "Unique ID for the conversation thread"
+    }
+  },
+  "required": [
+    "equipment_id",
+    "sender_email",
+    "receiver_email",
+    "content",
+    "conversation_id"
+  ]
+}

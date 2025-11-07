@@ -1,0 +1,242 @@
+
+import { useState, useEffect, useRef } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, Send, AlertCircle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { format } from "date-fns";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+
+export default function Messages() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const messagesEndRef = useRef(null);
+  const urlParams = new URLSearchParams(window.location.search);
+  
+  const equipmentId = urlParams.get('equipment_id');
+  const ownerEmail = urlParams.get('owner_email');
+  
+  const [messageContent, setMessageContent] = useState("");
+  const [error, setError] = useState(null);
+
+  const { data: user } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
+  const { data: equipment } = useQuery({
+    queryKey: ['equipment', equipmentId],
+    queryFn: async () => {
+      const items = await base44.entities.Equipment.filter({ id: equipmentId });
+      return items[0];
+    },
+    enabled: !!equipmentId,
+  });
+
+  const conversationId = user && ownerEmail ? 
+    [user.email, ownerEmail].sort().join('_') + '_' + equipmentId : null;
+
+  const { data: messages, isLoading } = useQuery({
+    queryKey: ['messages', conversationId],
+    queryFn: () => base44.entities.Message.filter({ conversation_id: conversationId }, 'created_date'),
+    initialData: [],
+    enabled: !!conversationId,
+    refetchInterval: 3000,
+  });
+
+  const sendMessageMutation = useMutation({
+    mutationFn: (messageData) => base44.entities.Message.create(messageData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['messages', conversationId] });
+      setMessageContent("");
+      setError(null);
+    },
+    onError: () => {
+      setError("Failed to send message. Please try again.");
+    },
+  });
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const containsContactInfo = (text) => {
+    const phonePatterns = [
+      /\b\d{10,}\b/,
+      /\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/,
+      /\b0\d{2}[-.\s]?\d{3}[-.\s]?\d{4}\b/,
+      /\+\d{1,3}[-.\s]?\d{1,14}\b/,
+    ];
+    
+    const emailPattern = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/;
+    
+    const contactPhrases = [
+      /whatsapp/i,
+      /\bcall me\b/i,
+      /\bphone me\b/i,
+      /\bmy number\b/i,
+      /\bcontact me\b/i,
+      /\bemail me\b/i,
+      /\bdm me\b/i,
+      /\btext me\b/i,
+    ];
+
+    return phonePatterns.some(pattern => pattern.test(text)) ||
+           emailPattern.test(text) ||
+           contactPhrases.some(pattern => pattern.test(text));
+  };
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    
+    if (!messageContent.trim()) return;
+
+    if (containsContactInfo(messageContent)) {
+      setError("Please keep all communication within the app. Phone numbers, emails, and external contact details are not allowed.");
+      return;
+    }
+
+    const messageData = {
+      equipment_id: equipmentId,
+      equipment_name: equipment?.name || "Equipment",
+      sender_email: user.email,
+      sender_name: user.full_name || user.email,
+      receiver_email: ownerEmail,
+      receiver_name: ownerEmail,
+      content: messageContent.trim(),
+      conversation_id: conversationId,
+    };
+
+    sendMessageMutation.mutate(messageData);
+  };
+
+  if (!user) {
+    return (
+      <div className="max-w-4xl mx-auto px-6 py-16 text-center bg-black min-h-screen">
+        <h2 className="text-2xl font-bold mb-4 text-white">Please login to send messages</h2>
+        <Button
+          onClick={() => base44.auth.redirectToLogin()}
+          className="bg-cyan-400 text-black hover:bg-cyan-300"
+        >
+          Login
+        </Button>
+      </div>
+    );
+  }
+
+  if (!equipment || !ownerEmail) {
+    return (
+      <div className="max-w-4xl mx-auto px-6 py-16 text-center bg-black min-h-screen">
+        <h2 className="text-2xl font-bold mb-4 text-white">Invalid conversation</h2>
+        <Button onClick={() => navigate(createPageUrl("Home"))} className="bg-cyan-400 text-black hover:bg-cyan-300">
+          Back to Browse
+        </Button>
+      </div>
+    );
+  }
+
+  const isOwner = user.email === ownerEmail;
+  const ownerDisplayName = equipment.created_by ? equipment.created_by.split('@')[0] : 'Owner';
+
+  return (
+    <div className="max-w-4xl mx-auto px-6 py-8 bg-black min-h-screen flex flex-col">
+      <Button
+        variant="ghost"
+        onClick={() => navigate(createPageUrl("EquipmentDetails") + `?id=${equipmentId}`)}
+        className="mb-6 hover:bg-gray-900 text-gray-300 self-start"
+      >
+        <ArrowLeft className="w-4 h-4 mr-2" />
+        Back
+      </Button>
+
+      <Card className="flex-1 flex flex-col bg-gray-900 border-gray-800 rounded-3xl overflow-hidden">
+        <CardHeader className="border-b border-gray-800">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-gray-800 rounded-lg overflow-hidden flex-shrink-0">
+              {equipment.image_url ? (
+                <img src={equipment.image_url} alt={equipment.name} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-2xl">🎵</div>
+              )}
+            </div>
+            <div className="flex-1">
+              <CardTitle className="text-white text-lg">{equipment.name}</CardTitle>
+              <p className="text-sm text-gray-400">
+                {isOwner ? "Your equipment" : `Owner: ${ownerDisplayName}`}
+              </p>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="flex-1 overflow-y-auto p-6 space-y-4">
+          {error && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {messages.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-500">No messages yet. Start the conversation!</p>
+            </div>
+          ) : (
+            messages.map((message) => {
+              const isOwnMessage = message.sender_email === user.email;
+              return (
+                <div
+                  key={message.id}
+                  className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div className={`max-w-[70%] ${isOwnMessage ? 'order-2' : 'order-1'}`}>
+                    <div
+                      className={`rounded-2xl px-4 py-2 ${
+                        isOwnMessage
+                          ? 'bg-cyan-400 text-black'
+                          : 'bg-gray-800 text-white'
+                      }`}
+                    >
+                      <p className="text-sm break-words">{message.content}</p>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1 px-2">
+                      {format(new Date(message.created_date), "MMM d, h:mm a")}
+                    </p>
+                  </div>
+                </div>
+              );
+            })
+          )}
+          <div ref={messagesEndRef} />
+        </CardContent>
+
+        <div className="border-t border-gray-800 p-4">
+          <form onSubmit={handleSendMessage} className="flex gap-2">
+            <Input
+              value={messageContent}
+              onChange={(e) => setMessageContent(e.target.value)}
+              placeholder="Type your message... (no phone numbers or contact info)"
+              className="flex-1 bg-gray-800 border-gray-700 text-white"
+              disabled={sendMessageMutation.isPending}
+            />
+            <Button
+              type="submit"
+              disabled={!messageContent.trim() || sendMessageMutation.isPending}
+              className="bg-cyan-400 text-black hover:bg-cyan-300"
+            >
+              <Send className="w-4 h-4" />
+            </Button>
+          </form>
+        </div>
+      </Card>
+    </div>
+  );
+}

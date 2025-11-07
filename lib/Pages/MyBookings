@@ -1,73 +1,39 @@
+
+import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Calendar,
-  MapPin,
-  DollarSign,
-  CheckCircle,
-  XCircle,
-  Package,
-} from "lucide-react";
+import { Calendar, MapPin, DollarSign, CheckCircle, XCircle, Package } from "lucide-react";
 import { format } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
 import { createPageUrl } from "@/utils";
-
-/** Replace with your backend base URL */
-const API_URL = "https://your-api.example.com";
-
-async function fetchCurrentUser() {
-  const res = await fetch(`${API_URL}/auth/me`, { credentials: "include" });
-  if (!res.ok) throw new Error("Failed to fetch user");
-  return res.json();
-}
-
-async function fetchBookings() {
-  const res = await fetch(`${API_URL}/bookings?order=-created_date`, {
-    credentials: "include",
-  });
-  if (!res.ok) throw new Error("Failed to fetch bookings");
-  return res.json();
-}
-
-async function updateBooking(id, data) {
-  const res = await fetch(`${API_URL}/bookings/${id}`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    credentials: "include",
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error("Failed to update booking");
-  return res.json();
-}
 
 export default function MyBookings() {
   const queryClient = useQueryClient();
 
   const { data: user } = useQuery({
-    queryKey: ["currentUser"],
-    queryFn: fetchCurrentUser,
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
   });
 
-  const { data: bookings = [], isLoading } = useQuery({
-    queryKey: ["bookings", user?.email],
-    queryFn: fetchBookings,
+  const { data: bookings, isLoading } = useQuery({
+    queryKey: ['bookings', user?.email],
+    queryFn: () => base44.entities.Booking.list('-created_date'),
+    initialData: [],
     enabled: !!user,
   });
 
   const updateBookingMutation = useMutation({
-    mutationFn: ({ id, data }) => updateBooking(id, data),
+    mutationFn: ({ id, data }) => base44.entities.Booking.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["bookings"] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
     },
   });
 
-  const myRentals = bookings.filter((b) => b.renter_email === user?.email);
-  const myListings = bookings.filter((b) => b.owner_email === user?.email);
+  const myRentals = bookings.filter(b => b.renter_email === user?.email);
+  const myListings = bookings.filter(b => b.owner_email === user?.email);
 
   const statusColors = {
     pending: "bg-yellow-100 text-yellow-800",
@@ -84,24 +50,25 @@ export default function MyBookings() {
   };
 
   const handleStatusUpdate = (bookingId, newStatus) => {
-    let paymentStatus = "held_in_escrow";
-    if (newStatus === "returned") paymentStatus = "released_to_owner";
-    else if (newStatus === "cancelled") paymentStatus = "refunded";
+    let paymentStatus = 'held_in_escrow';
+    if (newStatus === 'returned') {
+      paymentStatus = 'released_to_owner';
+    } else if (newStatus === 'cancelled') {
+      paymentStatus = 'refunded';
+    }
 
     updateBookingMutation.mutate({
       id: bookingId,
-      data: { status: newStatus, payment_status: paymentStatus },
+      data: { status: newStatus, payment_status: paymentStatus }
     });
   };
 
   if (!user) {
     return (
       <div className="max-w-4xl mx-auto px-6 py-16 text-center bg-black min-h-screen">
-        <h2 className="text-2xl font-bold mb-4 text-white">
-          Please login to view your bookings
-        </h2>
+        <h2 className="text-2xl font-bold mb-4 text-white">Please login to view your bookings</h2>
         <Button
-          onClick={() => (window.location.href = `${API_URL}/login`)}
+          onClick={() => base44.auth.redirectToLogin()}
           className="bg-cyan-400 text-black hover:bg-cyan-300"
         >
           Login
@@ -115,15 +82,13 @@ export default function MyBookings() {
       <CardHeader className="bg-gradient-to-r from-red-50 to-blue-50">
         <div className="flex justify-between items-start">
           <div>
-            <CardTitle className="text-xl mb-2">
-              {booking.equipment_name}
-            </CardTitle>
+            <CardTitle className="text-xl mb-2">{booking.equipment_name}</CardTitle>
             <div className="flex gap-2 flex-wrap">
               <Badge className={statusColors[booking.status]}>
-                {booking.status?.replace(/_/g, " ")}
+                {booking.status?.replace(/_/g, ' ')}
               </Badge>
               <Badge className={paymentColors[booking.payment_status]}>
-                💰 {booking.payment_status?.replace(/_/g, " ")}
+                💰 {booking.payment_status?.replace(/_/g, ' ')}
               </Badge>
             </div>
           </div>
@@ -142,8 +107,7 @@ export default function MyBookings() {
             <div>
               <p className="text-sm text-gray-600">Rental Period</p>
               <p className="font-semibold">
-                {format(new Date(booking.start_date), "MMM d, yyyy")} -{" "}
-                {format(new Date(booking.end_date), "MMM d, yyyy")}
+                {format(new Date(booking.start_date), "MMM d, yyyy")} - {format(new Date(booking.end_date), "MMM d, yyyy")}
               </p>
             </div>
           </div>
@@ -162,11 +126,9 @@ export default function MyBookings() {
           <div className="flex items-start gap-2">
             <Package className="w-5 h-5 text-red-600 mt-0.5" />
             <div>
-              <p className="text-sm text-gray-600">
-                {isOwner ? "Renter" : "Owner"}
-              </p>
+              <p className="text-sm text-gray-600">{isOwner ? 'Renter' : 'Owner'}</p>
               <p className="font-semibold">
-                {isOwner ? booking.renter_name : "Contact via app"}
+                {isOwner ? booking.renter_name : 'Contact via app'}
               </p>
               {booking.contact_number && (
                 <p className="text-sm text-gray-600">{booking.contact_number}</p>
@@ -179,20 +141,18 @@ export default function MyBookings() {
             <div>
               <p className="text-sm text-gray-600">Payment Status</p>
               <p className="font-semibold">
-                {booking.payment_status === "held_in_escrow" &&
-                  "💰 Held in Escrow"}
-                {booking.payment_status === "released_to_owner" &&
-                  "✅ Released to Owner"}
-                {booking.payment_status === "refunded" && "↩️ Refunded"}
+                {booking.payment_status === 'held_in_escrow' && '💰 Held in Escrow'}
+                {booking.payment_status === 'released_to_owner' && '✅ Released to Owner'}
+                {booking.payment_status === 'refunded' && '↩️ Refunded'}
               </p>
             </div>
           </div>
         </div>
 
-        {isOwner && booking.status === "confirmed" && (
+        {isOwner && booking.status === 'confirmed' && (
           <div className="flex gap-3 pt-4 border-t">
             <Button
-              onClick={() => handleStatusUpdate(booking.id, "picked_up")}
+              onClick={() => handleStatusUpdate(booking.id, 'picked_up')}
               className="flex-1 bg-blue-600 hover:bg-blue-700"
               disabled={updateBookingMutation.isPending}
             >
@@ -201,10 +161,10 @@ export default function MyBookings() {
           </div>
         )}
 
-        {isOwner && booking.status === "picked_up" && (
+        {isOwner && booking.status === 'picked_up' && (
           <div className="flex gap-3 pt-4 border-t">
             <Button
-              onClick={() => handleStatusUpdate(booking.id, "returned")}
+              onClick={() => handleStatusUpdate(booking.id, 'returned')}
               className="flex-1 bg-green-600 hover:bg-green-700"
               disabled={updateBookingMutation.isPending}
             >
@@ -214,10 +174,10 @@ export default function MyBookings() {
           </div>
         )}
 
-        {!isOwner && booking.status === "pending" && (
+        {!isOwner && booking.status === 'pending' && (
           <div className="flex gap-3 pt-4 border-t">
             <Button
-              onClick={() => handleStatusUpdate(booking.id, "cancelled")}
+              onClick={() => handleStatusUpdate(booking.id, 'cancelled')}
               variant="destructive"
               className="flex-1"
               disabled={updateBookingMutation.isPending}
@@ -260,27 +220,23 @@ export default function MyBookings() {
 
         <TabsContent value="rentals" className="space-y-6">
           {isLoading ? (
-            Array(3)
-              .fill(0)
-              .map((_, i) => <Skeleton key={i} className="h-64 w-full" />)
+            Array(3).fill(0).map((_, i) => (
+              <Skeleton key={i} className="h-64 w-full" />
+            ))
           ) : myRentals.length === 0 ? (
             <Card className="p-12 text-center border-2 border-red-200">
               <Calendar className="w-16 h-16 mx-auto mb-4 text-red-600" />
               <h3 className="text-xl font-semibold mb-2">No rentals yet</h3>
-              <p className="text-gray-600 mb-6">
-                Start browsing equipment to make your first booking
-              </p>
+              <p className="text-gray-600 mb-6">Start browsing equipment to make your first booking</p>
               <Button
-                onClick={() =>
-                  (window.location.href = createPageUrl("Home"))
-                }
+                onClick={() => window.location.href = createPageUrl("Home")}
                 className="bg-gradient-to-r from-red-600 to-blue-600 hover:from-red-700 hover:to-blue-700"
               >
                 Browse Equipment
               </Button>
             </Card>
           ) : (
-            myRentals.map((booking) => (
+            myRentals.map(booking => (
               <BookingCard key={booking.id} booking={booking} isOwner={false} />
             ))
           )}
@@ -288,29 +244,23 @@ export default function MyBookings() {
 
         <TabsContent value="listings" className="space-y-6">
           {isLoading ? (
-            Array(3)
-              .fill(0)
-              .map((_, i) => <Skeleton key={i} className="h-64 w-full" />)
+            Array(3).fill(0).map((_, i) => (
+              <Skeleton key={i} className="h-64 w-full" />
+            ))
           ) : myListings.length === 0 ? (
             <Card className="p-12 text-center border-2 border-red-200">
               <Package className="w-16 h-16 mx-auto mb-4 text-red-600" />
-              <h3 className="text-xl font-semibold mb-2">
-                No bookings for your equipment
-              </h3>
-              <p className="text-gray-600 mb-6">
-                List your equipment to start earning
-              </p>
+              <h3 className="text-xl font-semibold mb-2">No bookings for your equipment</h3>
+              <p className="text-gray-600 mb-6">List your equipment to start earning</p>
               <Button
-                onClick={() =>
-                  (window.location.href = createPageUrl("ListEquipment"))
-                }
+                onClick={() => window.location.href = createPageUrl("ListEquipment")}
                 className="bg-gradient-to-r from-red-600 to-blue-600 hover:from-red-700 hover:to-blue-700"
               >
                 List Equipment
               </Button>
             </Card>
           ) : (
-            myListings.map((booking) => (
+            myListings.map(booking => (
               <BookingCard key={booking.id} booking={booking} isOwner={true} />
             ))
           )}
